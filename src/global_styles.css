@@ -1,0 +1,18 @@
+div.section {
+  margin-top: 1.2em;
+  font-weight: 600;
+}
+
+input.short-number {
+  max-width: 4em;
+}
+
+div.simulation-area {
+  margin-top: 2em;
+}
+
+svg.animation-host {
+  overflow: visible;
+  padding: 12px;
+  border: 1px solid black;
+}

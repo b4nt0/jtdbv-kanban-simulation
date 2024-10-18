@@ -108,11 +108,32 @@ import { FormsModule } from '@angular/forms';
 
     <div class="section">Simulation</div>
     <div>
-        <label>
-            Animate
-            <input type="checkbox" [(ngModel)]="animate" [disabled]="running">
-        </label>
-      </div>
+      <label>
+          Animate
+          <input type="checkbox" [(ngModel)]="animate" [disabled]="running">
+      </label>
+    </div>
+    <div *ngIf="animate">
+      <label>
+        <input type="radio" name="speed" [(ngModel)]="animateSpeed" value="5" [disabled]="running">
+        Ultra-fast
+      </label>
+
+      <label>
+        <input type="radio" name="speed" [(ngModel)]="animateSpeed" value="20" [disabled]="running">
+        Fast
+      </label>
+
+      <label>
+        <input type="radio" name="speed" [(ngModel)]="animateSpeed" value="50" [disabled]="running">
+        Normal
+      </label>
+
+      <label>
+        <input type="radio" name="speed" [(ngModel)]="animateSpeed" value="100" [disabled]="running">
+        Slow
+      </label>
+    </div>
     <button *ngIf="!running" (click)="runSimulation()">Start</button>
     <button *ngIf="running" (click)="stopSimulation()">Stop</button>
 
@@ -215,20 +236,10 @@ export class App {
   public wsWidth: number = 0;
   public boxWidth: number = 0;
 
-  public newBoxTimesPerHourM: number = 10;
-
-  public processingTimeMinutesM: number = 5;
-  public processingTimeMinutesD: number = 3;
-
-  public wipLimit: number = 3;
-  public reactionTime = 0.5;
-  public helpersM: number = 2;
-  public helpersD: number = 1;
-
-
   public flow?: Flow;
   public running: boolean = false;
   public animate: boolean = true;
+  public animateSpeed = "50";
   public simulationTime: number | undefined = 0;
 
   constructor() {
@@ -287,7 +298,7 @@ export class App {
 
     if (this.animate) {
       options['maxTimeStep'] = 10;
-      options['frameDelay'] = 50;
+      options['frameDelay'] = +this.animateSpeed;
     }
 
     this.flow = new Flow(this.simulationRules, options);
@@ -328,9 +339,9 @@ export class App {
     if (this.output) {
      
       let statistics =
-        this.flow.getStatsTable() +
-        this.flow.boxStatistics.getHistogramChart()
-      ;
+      this.flow.boxStatistics.getHistogramChart('Time in system') +
+      this.flow.getStatsTable() +
+      '';
 
       this.output!.nativeElement.innerHTML = statistics;
     }

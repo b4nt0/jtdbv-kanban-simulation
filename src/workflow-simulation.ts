@@ -1,4 +1,4 @@
-import { Simulation, Entity, Queue, Exponential, Uniform, Tally } from 'simscript';
+import { Simulation, Entity, Queue, Exponential, Uniform, Tally, RandomVar } from 'simscript';
 
 const NAMES = [
   'Alice',
@@ -146,9 +146,6 @@ export class Workstation {
     this.waitQueue = new Queue(`Waiting for ${name}`);
     this.queue = new Queue(name, 0);
 
-    this.waitQueue.grossPop.setHistogramParameters(1);
-    this.queue.grossPop.setHistogramParameters(1);
-
     this.workTimeM = workTimeM;
     this.workTimeD = workTimeD;
     this.work = new Uniform(
@@ -200,16 +197,21 @@ export class Flow extends Simulation {
   workers: Worker[] = [];
   workstations: Workstation[] = [];
 
-  boxGenerationInterval = new Exponential(3600 /* an hour */ / 10 /* how many per unit of time */);
+  boxGenerationInterval: RandomVar;
 
   boxStatistics: Tally = new Tally();
 
   constructor(simulationRules: SimulationOptions, options?: any) {
     super(options);
 
-    this.boxStatistics.setHistogramParameters(500);
-
+    this.boxGenerationInterval = new Exponential(3600 /* per hour */ / simulationRules.ordersPerHour);
     this.timeEnd = 3600 * 24 * 10; // 10 days
+
+    this.boxStatistics.setHistogramParameters(
+      simulationRules.workTimeM * 60 * simulationRules.capacity / 2,
+      simulationRules.workTimeM * 60,
+      simulationRules.workTimeM * 60 * simulationRules.capacity * 5
+    );
 
     if (simulationRules.capacity > NAMES.length) {
       throw new Error(
@@ -223,7 +225,7 @@ export class Flow extends Simulation {
 
     for (let i = 0; i < simulationRules.capacity; i++) {
       let w = new Worker(NAMES[i]);
-      let ws = new Workstation(WORKSTATIONS[i], [w]);
+      let ws = new Workstation(WORKSTATIONS[i], [w], simulationRules.workTimeM * 60, simulationRules.workTimeD * 60);
 
       this.workers.push(w);
       this.workstations.push(ws);

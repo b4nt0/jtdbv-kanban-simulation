@@ -82,8 +82,8 @@ export class SimulationOptions {
   managersPerfection: number = 1;
   managerialInterventionFrequency = 5;
   randomBreakProbability = 0.001;
-  randomBreakDurationM: number = 20;
-  randomBreakDurationD: number = 5;  
+  randomBreakDurationM: number = 60;
+  randomBreakDurationD: number = 20;  
 }
 
 export class Worker {
@@ -355,9 +355,12 @@ export class Flow extends Simulation {
     if (!this.brokenWorkstation && (this.rules.randomBreakProbability > 0)) {
       if (Math.random() < this.rules.randomBreakProbability) {
         let index = Math.floor(Math.random() * this.workstations.length);
-        this.brokenWorkstation = this.workstations[index];
-        this.brokenWorkstation.slow = true;
-        this.brokenUntil = this.timeNow + this.breakDuration.sample();
+        let bws = this.workstations[index];
+        if (!bws.slow) {
+          this.brokenWorkstation = bws;
+          this.brokenWorkstation.slow = true;
+          this.brokenUntil = this.timeNow + this.breakDuration.sample();
+        }
       }
     }
     else if (!!this.brokenWorkstation && (this.brokenUntil! < this.timeNow)) {

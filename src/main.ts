@@ -39,6 +39,33 @@ import { FormsModule } from '@angular/forms';
       </div>
     </div>
 
+    <div>
+      <div class="section">Workstations</div>
+      <div>
+        <label>
+            How many workstations to simulate?
+            <input type="number" class="short-number" min="4" max="26" [(ngModel)]="simulationRules.capacity" (ngModelChange)="createSimulation()" [disabled]="running">
+        </label>
+      </div>
+
+      <div>
+        <label>
+            Processing time, minutes
+            <input type="number" class="short-number" min="0" [(ngModel)]="simulationRules.workTimeM" [disabled]="running">
+        </label>
+        <label>
+            ±
+            <input type="number" class="short-number" min="0" [(ngModel)]="simulationRules.workTimeD" [disabled]="running">
+        </label>
+      </div>
+
+      <div>
+        <button (click)="setProcessingTime(5/6)">Normal</button>
+        <button (click)="setProcessingTime(1.01)">Hard</button>
+        <button (click)="setProcessingTime(1.2)">Insane</button>
+      </div>
+    </div>
+
     <ng-container  *ngIf="simulationRules.rules == 'kanban'">
       <div class="section">Kanban</div>
       <div>
@@ -80,33 +107,6 @@ import { FormsModule } from '@angular/forms';
         </label>
       </div>
     </ng-container>
-
-    <div>
-      <div class="section">Workstations</div>
-      <div>
-        <label>
-            How many workstations to simulate?
-            <input type="number" class="short-number" min="4" max="26" [(ngModel)]="simulationRules.capacity" (ngModelChange)="createSimulation()" [disabled]="running">
-        </label>
-      </div>
-
-      <div>
-        <label>
-            Processing time, minutes
-            <input type="number" class="short-number" min="0" [(ngModel)]="simulationRules.workTimeM" [disabled]="running">
-        </label>
-        <label>
-            ±
-            <input type="number" class="short-number" min="0" [(ngModel)]="simulationRules.workTimeD" [disabled]="running">
-        </label>
-      </div>
-
-      <div>
-        <button (click)="setProcessingTime(5/6)">Normal</button>
-        <button (click)="setProcessingTime(1.01)">Hard</button>
-        <button (click)="setProcessingTime(1.2)">Insane</button>
-    </div>
-    </div>
 
     <div>
       <div class="section">Orders</div>

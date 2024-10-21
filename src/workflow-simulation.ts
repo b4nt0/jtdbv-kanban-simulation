@@ -79,6 +79,11 @@ export class SimulationOptions {
   helpersM: number = 2;
   helpersD: number = 1;
   wipLimit: number = 3;
+  managersPerfection: number = 1;
+  managerialInterventionFrequency = 5;
+  randomBreakProbability = 0.001;
+  randomBreakDurationM: number = 20;
+  randomBreakDurationD: number = 5;  
 }
 
 export class Worker {
@@ -273,6 +278,11 @@ export class Flow extends Simulation {
   boxStatistics: Tally = new Tally();
 
   helpers: Uniform;
+  latestManagerialIntervention: number = 0;
+
+  brokenWorkstation?: Workstation;
+  brokenUntil?: number;
+  breakDuration: Uniform;
 
   constructor(simulationRules: SimulationOptions, options?: any) {
     super(options);
@@ -280,15 +290,29 @@ export class Flow extends Simulation {
     this.rules = simulationRules;
 
     this.boxGenerationInterval = new Exponential(3600 /* per hour */ / simulationRules.ordersPerHour);
-    this.timeEnd = 3600 * 24 * 10; // 10 days
+    this.timeEnd = 3600 * 24 * 50 /* days */;
 
     this.helpers = new Uniform(this.rules.helpersM-this.rules.helpersD, this.rules.helpersM+this.rules.helpersD);
+    this.breakDuration = new Uniform((this.rules.randomBreakDurationM - this.rules.randomBreakDurationD)*60, (this.rules.randomBreakDurationM + this.rules.randomBreakDurationD)*60);
 
-    this.boxStatistics.setHistogramParameters(
-      simulationRules.workTimeM * 60 * simulationRules.capacity / 2,
-      simulationRules.workTimeM * 60,
-      simulationRules.workTimeM * 60 * simulationRules.capacity * 5
-    );
+    this.rules.managerialInterventionFrequency = this.rules.reactionTime;
+
+    let overloadFactor = this.rules.workTimeM / (60 / this.rules.ordersPerHour);
+    if (overloadFactor < 1) {
+      this.boxStatistics.setHistogramParameters(
+        simulationRules.workTimeM * 60 * simulationRules.capacity / 2,
+        simulationRules.workTimeM * 60,
+        simulationRules.workTimeM * 60 * simulationRules.capacity * 5
+      );
+    }
+    else {
+      this.boxStatistics.setHistogramParameters(
+        simulationRules.workTimeM * 60 * simulationRules.capacity / 2,
+        simulationRules.workTimeM * 60 * 5,
+        simulationRules.workTimeM * 60 * simulationRules.capacity * 7
+      );
+    }
+
 
     if (simulationRules.capacity > NAMES.length) {
       throw new Error(
@@ -327,13 +351,27 @@ export class Flow extends Simulation {
   override onTimeNowChanged(e?: EventArgs | undefined): void {
     super.onTimeNowChanged(e);
 
+    // Process random workstation break and fix
+    if (!this.brokenWorkstation && (this.rules.randomBreakProbability > 0)) {
+      if (Math.random() < this.rules.randomBreakProbability) {
+        let index = Math.floor(Math.random() * this.workstations.length);
+        this.brokenWorkstation = this.workstations[index];
+        this.brokenWorkstation.slow = true;
+        this.brokenUntil = this.timeNow + this.breakDuration.sample();
+      }
+    }
+    else if (!!this.brokenWorkstation && (this.brokenUntil! < this.timeNow)) {
+      this.brokenWorkstation.slow = false;
+      this.brokenWorkstation = undefined;
+      this.brokenUntil = undefined;
+    }
+
     if (this.rules.rules == 'self') {
       return;
     }
 
-    // This is a manager or kanban situation
-    
-    // Let's first find underloaded and overloaded queues
+    // Processes simulation business logic
+    // ===================================
 
     // "Manager" rules:
     /*
@@ -345,48 +383,61 @@ export class Flow extends Simulation {
       least loaded colleagues will be asked to help out. 
       They will continue helping out until your load drops
       below the "overload" point.
+
+      Note: the manager intervenes every with the frequency 
+      defined as managerialInterventionFrequency
     */
-    for (let ws of this.workstations) {
-      if (ws.perceivedLoadNow(this.timeNow) == 1) {
-        // It's overloaded, try to get help from the least loaded workstations
-        let wsLoad = this.workstations.
-          map(ws => { return { ws: ws, load: ws.waitQueue.unitsInUse }; }).
-          sort((a, b) => a.load - b.load);
-
-        let helpersToAssign = Math.round(this.helpers.sample());
-        wsLoad.length = Math.min(wsLoad.length, helpersToAssign);
-
-        let wsDonor: { ws: Workstation, load: number };
-        for (let wsDonor of wsLoad) {
-          if (wsDonor.ws.workers.length) {
-            wsDonor.ws.workers[0].workstation = ws;
-          }
-        }
-      }
-      else if (ws.perceivedLoadNow(this.timeNow) == -1) {
-          // It's underloaded, push the worker to help others
-          if (ws.workers.length) {
-            // Find the most loaded workstation
+    if (this.rules.rules == 'manager') {
+      // Is it time to intervene?
+      if (this.latestManagerialIntervention < this.timeNow - this.rules.managerialInterventionFrequency * 60) {
+        this.latestManagerialIntervention = this.timeNow;
+        for (let ws of this.workstations) {
+          if (ws.perceivedLoadNow(this.timeNow) == 1) {
+            // It's overloaded, try to get help from the least loaded workstations
             let wsLoad = this.workstations.
-            map(ws => { return { ws: ws, load: ws.waitQueue.unitsInUse }; }).
-            sort((a, b) => b.load - a.load);
+              map(ws => { return { ws: ws, load: ws.waitQueue.unitsInUse }; }).
+              sort((a, b) => a.load - b.load);
 
-            if (wsLoad.length) {
-              let wsRecipient = wsLoad[0];
-              ws.workers[0].workstation = wsRecipient.ws;
+            let helpersToAssign = Math.round(this.helpers.sample());
+
+            // Account for manager's imperfection
+            // Select top N underloaded people and pick helpers among them
+            wsLoad.length = Math.min(wsLoad.length, Math.round(helpersToAssign  / this.rules.managersPerfection));
+            this.shuffle(wsLoad);
+            wsLoad.length = Math.min(wsLoad.length, helpersToAssign);
+
+            let wsDonor: { ws: Workstation, load: number };
+            for (let wsDonor of wsLoad) {
+              if (wsDonor.ws.workers.length) {
+                wsDonor.ws.workers[0].workstation = ws;
+              }
             }
           }
-      }
-      else {
-        // It's normal, return all help home
-        for (let worker of ws.workers) {
-          if (worker.home && (worker.home != ws)) {
-            worker.workstation = worker.home;
+          else if (ws.perceivedLoadNow(this.timeNow) == -1) {
+            // It's underloaded, push the worker to help others
+            if (ws.workers.length) {
+              // Find the most loaded workstation
+              let wsLoad = this.workstations.
+              map(ws => { return { ws: ws, load: ws.waitQueue.unitsInUse }; }).
+              sort((a, b) => b.load - a.load);
+
+              if (wsLoad.length) {
+                let wsRecipient = wsLoad[0];
+                ws.workers[0].workstation = wsRecipient.ws;
+              }
+            }
+          }
+          else {
+            // It's normal, return all help home
+            for (let worker of ws.workers) {
+              if (worker.home && (worker.home != ws)) {
+                worker.workstation = worker.home;
+              }
+            }
           }
         }
       }
     }
-    
 
     // "Kanban" rules:
     /*
@@ -397,28 +448,61 @@ export class Flow extends Simulation {
       too many in their "inbox"), you move right. When the next
       station to your "home" has space, you move back.
     */
+      
+    if (this.rules.rules == 'kanban') {
       for (let i=0; i<this.workstations.length; i++) {
         let ws = this.workstations[i];
 
-        if (ws.perceivedLoadNow(this.timeNow) == 1) {
+        if ((ws.perceivedLoadNow(this.timeNow) == 1) && (i > 0)) {
           // It's overloaded, the previous guy goes right
+          let previousWs = this.workstations[i-1];
+          if (previousWs.workers.length) {
+            previousWs.workers[0].workstation = ws;
+          }
+        }
+        else if ((ws.perceivedLoadNow(this.timeNow) == -1) && (i > 0) && (ws.workers.length > 0)) {
+            // It's underloaded, go left
+            ws.workers[0].workstation = this.workstations[i-1];    
         }
         else if (ws.perceivedLoadNow(this.timeNow) == 0) {
-            // It's underloaded, go left
-        }
-        else {
-          // It's normal, all help steps in their home direction
+          // It's normal, no more help needed
+          // Send all help home step-by-step
+          for (let worker of ws.workers) {
+            if (worker.home && (worker.home != ws)) {
+              // Determine where we need to step - right or left
+              let homeIndex = this.workstations.indexOf(worker.home);
+              if (homeIndex < i) {
+                worker.workstation = this.workstations[i-1];
+              }
+              else if (homeIndex > i) {
+                worker.workstation = this.workstations[i+1];
+              }
+            }
+          }
+
+          /*
+          // Just send all help home immediately
+          for (let worker of ws.workers) {
+            if (worker.home && (worker.home != ws)) {
+              worker.workstation = worker.home;
+            }
+          }
+          */
         }
       }
-      
-    // Run the business rules
-    switch(this.rules.rules) {
-      case 'manager':
-        break;
-      case 'kanban':
-        break;
-      default:
-        break;
+    }  
+     
+  }
+
+  shuffle(array: any[]) {
+    let currentIndex = array.length;
+  
+    while (currentIndex != 0) {  
+      let randomIndex = Math.floor(Math.random() * currentIndex);
+      currentIndex--;
+  
+      [array[currentIndex], array[randomIndex]] = [
+        array[randomIndex], array[currentIndex]];
     }
   }
 }

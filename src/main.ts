@@ -49,8 +49,8 @@ import { FormsModule } from '@angular/forms';
       </div>
       <div>
         <label>
-            Reaction time, minutes
-            <input type="number" class="short-number" [disabled]="running" min="0"  [(ngModel)]="simulationRules.reactionTime">
+            Employee's reaction time, minutes
+            <input type="number" class="short-number" [disabled]="running" min="0"  [(ngModel)]="kanbanReactionTime">
         </label>
       </div>
     </ng-container>
@@ -66,7 +66,7 @@ import { FormsModule } from '@angular/forms';
       <div>
         <label>
             Manager's reaction time, minutes
-            <input type="number" class="short-number" [disabled]="running" min="0" [(ngModel)]="simulationRules.reactionTime">
+            <input type="number" class="short-number" [disabled]="running" min="0" [(ngModel)]="managerReactionTime"><br>
         </label>
       </div>
       <div>
@@ -103,8 +103,8 @@ import { FormsModule } from '@angular/forms';
 
       <div>
         <button (click)="setProcessingTime(5/6)">Normal</button>
-        <button (click)="setProcessingTime(1.2)">Hard</button>
-        <button (click)="setProcessingTime(2)">Insane</button>
+        <button (click)="setProcessingTime(1.01)">Hard</button>
+        <button (click)="setProcessingTime(1.2)">Insane</button>
     </div>
     </div>
 
@@ -122,32 +122,34 @@ import { FormsModule } from '@angular/forms';
     <div>
       <label>
           Animate
-          <input type="checkbox" [(ngModel)]="animate" [disabled]="running">
+          <input type="checkbox" [(ngModel)]="animate" [disabled]="running && !paused">
       </label>
     </div>
     <div *ngIf="animate">
       <label>
-        <input type="radio" name="speed" [(ngModel)]="animateSpeed" value="5" [disabled]="running">
+        <input type="radio" name="speed" [(ngModel)]="animateSpeed" value="5" [disabled]="running && !paused">
         Ultra-fast
       </label>
 
       <label>
-        <input type="radio" name="speed" [(ngModel)]="animateSpeed" value="20" [disabled]="running">
+        <input type="radio" name="speed" [(ngModel)]="animateSpeed" value="20" [disabled]="running && !paused">
         Fast
       </label>
 
       <label>
-        <input type="radio" name="speed" [(ngModel)]="animateSpeed" value="50" [disabled]="running">
+        <input type="radio" name="speed" [(ngModel)]="animateSpeed" value="50" [disabled]="running && !paused">
         Normal
       </label>
 
       <label>
-        <input type="radio" name="speed" [(ngModel)]="animateSpeed" value="100" [disabled]="running">
+        <input type="radio" name="speed" [(ngModel)]="animateSpeed" value="100" [disabled]="running && !paused">
         Slow
       </label>
     </div>
     <button *ngIf="!running" (click)="runSimulation()"><strong>Start</strong></button>
     <button *ngIf="running" (click)="stopSimulation()">Stop</button>
+    <button *ngIf="running && !paused" (click)="pauseSimulation()">Pause</button>
+    <button *ngIf="running && paused" (click)="resumeSimulation()">Resume</button>
 
     <div class="simulation-area" *ngIf="animate">
       <svg #animation class="animation-host" viewBox="0 0 1000 500">
@@ -242,6 +244,8 @@ export class App {
   @ViewChild('animation') animation?: ElementRef;
 
   public simulationRules: SimulationOptions = new SimulationOptions();
+  public managerReactionTime = 5;
+  public kanbanReactionTime = 1;
 
   public wsSpacing: number = 2;
   public deskWidth: number = 0;
@@ -250,6 +254,7 @@ export class App {
 
   public flow?: Flow;
   public running: boolean = false;
+  public paused: boolean = false;
   public animate: boolean = true;
   public animateSpeed = "50";
   public simulationTime: number | undefined = 0;
@@ -313,13 +318,23 @@ export class App {
       options['frameDelay'] = +this.animateSpeed;
     }
 
+    if (this.simulationRules.rules == 'manager') {
+      this.simulationRules.reactionTime = this.managerReactionTime;
+    }
+    else if (this.simulationRules.rules == 'kanban') {
+      this.simulationRules.reactionTime = this.kanbanReactionTime;
+    }
+
     this.flow = new Flow(this.simulationRules, options);
 
     this.flow.stateChanged.addEventListener(() => {
       // The simulation switched from Running to Stopped or vice versa
+      console.warn('State changed');
 
       // Update the run button
-      this.running = this.flow?.state == SimulationState.Running;
+      if (!this.paused) {
+        this.running = this.flow?.state == SimulationState.Running;
+      }
 
       // Show stats
       if (!this.running) {
@@ -337,7 +352,32 @@ export class App {
 
   stopSimulation() {
     if (this.flow) {
+      this.paused = false;
       this.flow.stop();
+      this.running = false;
+      this.showStats();
+    }
+  }
+
+  pauseSimulation() {
+    if (this.flow) {
+      this.paused = true;
+      this.flow.stop();
+    }
+  }
+
+  resumeSimulation() {
+    if (this.flow) {
+      this.paused = false;
+      if (this.animate) {
+        this.flow.maxTimeStep = 10;
+        this.flow.frameDelay = +this.animateSpeed;
+      }
+      else {
+        this.flow.maxTimeStep = 10;
+        this.flow.frameDelay = null;
+      }
+      this.flow.start();
     }
   }
 

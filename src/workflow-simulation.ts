@@ -1,4 +1,4 @@
-import { Simulation, Entity, Queue, Exponential, Uniform, Tally, RandomVar } from 'simscript';
+import { Simulation, Entity, Queue, Exponential, Uniform, Tally, RandomVar, EventArgs } from 'simscript';
 
 const NAMES = [
   'Alice',
@@ -67,13 +67,15 @@ const COLORS = [
 
 export type SimulationRules = 'self' | 'manager' | 'kanban';
 
+export type LoadStatus = -1 /* underload */ | 0 /* normal */ | 1 /* overload */;
+
 export class SimulationOptions {
   capacity: number = 5;
   workTimeM: number = 5;
   workTimeD: number = 3;
   ordersPerHour: number = 10;
   rules: SimulationRules = 'self';
-  reactionTime: number = 0.5;
+  reactionTime: number = 5;
   helpersM: number = 2;
   helpersD: number = 1;
   wipLimit: number = 3;
@@ -93,10 +95,17 @@ export class Worker {
 
     if (value) {
       value.assign(this);
+      if (!this.home) {
+        // The first workstation a worker is assigned to,
+        // becomes their home by default
+        this.home = value;
+      }
     }
 
     this._workstation = value;
   }
+
+  public home?: Workstation;
 
   name: string;
 
@@ -117,6 +126,63 @@ export class Workstation {
   workTimeM: number;
   workTimeD: number;
   work: Uniform;
+
+  wipLimit: number;
+  reactionTime: number;
+  _overloadSince: number = -1;
+  _underloadSince: number = -1;
+  _normalSince: number = -1;
+  _lastKnownLoadStatus: LoadStatus = 0;
+
+  /*
+    Gets the current load state of the workstation.
+    Takes reaction time into account, i.e. the state
+    changes only after the reaction time passes.
+  */
+  perceivedLoadNow(currentTime: number): LoadStatus {
+    // Check the current real status
+    let result: LoadStatus = this._lastKnownLoadStatus;
+    
+    if (this.waitQueue.unitsInUse >= this.wipLimit) {
+      // Overload
+      if (this._overloadSince == -1) {
+        this._overloadSince = currentTime;
+        this._underloadSince = -1;
+        this._normalSince = -1;
+      }
+
+      if ((currentTime - this._overloadSince) > this.reactionTime) {
+        result = 1;
+      }
+    }
+    else if (this.waitQueue.unitsInUse <= 0) {
+      // Underload
+      if (this._underloadSince == -1) {
+        this._underloadSince = currentTime;
+        this._overloadSince = -1;
+        this._normalSince = -1;
+      }
+
+      if ((currentTime - this._underloadSince) > this.reactionTime) {
+        result = -1;
+      }
+    }
+    else {
+      // Normal
+      if (this._normalSince == -1) {
+        this._normalSince = currentTime;
+        this._underloadSince = -1;
+        this._overloadSince = -1;
+      }
+
+      if ((currentTime - this._normalSince) > this.reactionTime) {
+        result = 0;
+      }
+    }
+
+    this._lastKnownLoadStatus = result;
+    return result;
+  }
 
   private _slow: boolean = false;
   get slow(): boolean { return this._slow; }
@@ -140,9 +206,13 @@ export class Workstation {
     name: string,
     startingWorkers?: Worker[],
     workTimeM: number = 300,
-    workTimeD: number = 200
+    workTimeD: number = 200,
+    wipLimit: number = 3,
+    reactionTime: number = 30
   ) {
     this.name = name;
+    this.wipLimit = wipLimit;
+    this.reactionTime = reactionTime;
     this.waitQueue = new Queue(`Waiting for ${name}`);
     this.queue = new Queue(name, 0);
 
@@ -194,18 +264,25 @@ export class Workstation {
 }
 
 export class Flow extends Simulation {
+  rules: SimulationOptions;
+
   workers: Worker[] = [];
   workstations: Workstation[] = [];
 
   boxGenerationInterval: RandomVar;
-
   boxStatistics: Tally = new Tally();
+
+  helpers: Uniform;
 
   constructor(simulationRules: SimulationOptions, options?: any) {
     super(options);
 
+    this.rules = simulationRules;
+
     this.boxGenerationInterval = new Exponential(3600 /* per hour */ / simulationRules.ordersPerHour);
     this.timeEnd = 3600 * 24 * 10; // 10 days
+
+    this.helpers = new Uniform(this.rules.helpersM-this.rules.helpersD, this.rules.helpersM+this.rules.helpersD);
 
     this.boxStatistics.setHistogramParameters(
       simulationRules.workTimeM * 60 * simulationRules.capacity / 2,
@@ -219,13 +296,23 @@ export class Flow extends Simulation {
       );
     }
 
-    if (simulationRules.capacity < 1) {
-      throw new Error('There must be at least one workstation and worker.');
+    if ((simulationRules.rules == 'self') && (simulationRules.capacity < 1)) {
+      throw new Error('There must be at least one workstation and worker for a self-managed simulation.');
+    }
+
+    if ((['manager', 'kanban'].includes(simulationRules.rules)) && (simulationRules.capacity < 4)) {
+      throw new Error('There must be at least four workstations and workers for a managed simulation.');
     }
 
     for (let i = 0; i < simulationRules.capacity; i++) {
       let w = new Worker(NAMES[i]);
-      let ws = new Workstation(WORKSTATIONS[i], [w], simulationRules.workTimeM * 60, simulationRules.workTimeD * 60);
+      let ws = new Workstation(
+        WORKSTATIONS[i], 
+        [w], 
+        simulationRules.workTimeM * 60, simulationRules.workTimeD * 60,
+        simulationRules.wipLimit,
+        simulationRules.reactionTime * 60
+      );
 
       this.workers.push(w);
       this.workstations.push(ws);
@@ -235,6 +322,104 @@ export class Flow extends Simulation {
   override onStarting() {
     super.onStarting();
     this.generateEntities(Box, this.boxGenerationInterval);
+  }
+  
+  override onTimeNowChanged(e?: EventArgs | undefined): void {
+    super.onTimeNowChanged(e);
+
+    if (this.rules.rules == 'self') {
+      return;
+    }
+
+    // This is a manager or kanban situation
+    
+    // Let's first find underloaded and overloaded queues
+
+    // "Manager" rules:
+    /*
+      If you don't have work in your "inbox", you'll be 
+      asked to help out a colleague who is most overloaded now.
+      Once you have work in your "inbox", you return home.
+
+      If you have too much work in your "inbox", your N
+      least loaded colleagues will be asked to help out. 
+      They will continue helping out until your load drops
+      below the "overload" point.
+    */
+    for (let ws of this.workstations) {
+      if (ws.perceivedLoadNow(this.timeNow) == 1) {
+        // It's overloaded, try to get help from the least loaded workstations
+        let wsLoad = this.workstations.
+          map(ws => { return { ws: ws, load: ws.waitQueue.unitsInUse }; }).
+          sort((a, b) => a.load - b.load);
+
+        let helpersToAssign = Math.round(this.helpers.sample());
+        wsLoad.length = Math.min(wsLoad.length, helpersToAssign);
+
+        let wsDonor: { ws: Workstation, load: number };
+        for (let wsDonor of wsLoad) {
+          if (wsDonor.ws.workers.length) {
+            wsDonor.ws.workers[0].workstation = ws;
+          }
+        }
+      }
+      else if (ws.perceivedLoadNow(this.timeNow) == -1) {
+          // It's underloaded, push the worker to help others
+          if (ws.workers.length) {
+            // Find the most loaded workstation
+            let wsLoad = this.workstations.
+            map(ws => { return { ws: ws, load: ws.waitQueue.unitsInUse }; }).
+            sort((a, b) => b.load - a.load);
+
+            if (wsLoad.length) {
+              let wsRecipient = wsLoad[0];
+              ws.workers[0].workstation = wsRecipient.ws;
+            }
+          }
+      }
+      else {
+        // It's normal, return all help home
+        for (let worker of ws.workers) {
+          if (worker.home && (worker.home != ws)) {
+            worker.workstation = worker.home;
+          }
+        }
+      }
+    }
+    
+
+    // "Kanban" rules:
+    /*
+      If you don't have work in your "inbox", you move left.
+      When you have work in your "inbox", you go back.
+
+      If you can't push out your work (the next station has 
+      too many in their "inbox"), you move right. When the next
+      station to your "home" has space, you move back.
+    */
+      for (let i=0; i<this.workstations.length; i++) {
+        let ws = this.workstations[i];
+
+        if (ws.perceivedLoadNow(this.timeNow) == 1) {
+          // It's overloaded, the previous guy goes right
+        }
+        else if (ws.perceivedLoadNow(this.timeNow) == 0) {
+            // It's underloaded, go left
+        }
+        else {
+          // It's normal, all help steps in their home direction
+        }
+      }
+      
+    // Run the business rules
+    switch(this.rules.rules) {
+      case 'manager':
+        break;
+      case 'kanban':
+        break;
+      default:
+        break;
+    }
   }
 }
 

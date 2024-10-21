@@ -43,14 +43,14 @@ import { FormsModule } from '@angular/forms';
       <div class="section">Kanban</div>
       <div>
         <label>
-            WIP limit per station
-            <input type="number" class="short-number" [disabled]="running" [(ngModel)]="simulationRules.wipLimit">
+            WIP limit per station, orders
+            <input type="number" class="short-number" [disabled]="running" min="1" [(ngModel)]="simulationRules.wipLimit">
         </label>
       </div>
       <div>
         <label>
             Reaction time, minutes
-            <input type="number" class="short-number" [disabled]="running"  [(ngModel)]="simulationRules.reactionTime">
+            <input type="number" class="short-number" [disabled]="running" min="0"  [(ngModel)]="simulationRules.reactionTime">
         </label>
       </div>
     </ng-container>
@@ -59,13 +59,19 @@ import { FormsModule } from '@angular/forms';
       <div class="section">Manager</div>
       <div>
         <label>
-            Manager's reaction time, minutes
-            <input type="number" class="short-number" [disabled]="running" [(ngModel)]="simulationRules.reactionTime">
+            Overload sensitivity, orders
+            <input type="number" class="short-number" [disabled]="running" [(ngModel)]="simulationRules.wipLimit">
         </label>
       </div>
       <div>
         <label>
-            How many helpers to assign
+            Manager's reaction time, minutes
+            <input type="number" class="short-number" [disabled]="running" min="0" [(ngModel)]="simulationRules.reactionTime">
+        </label>
+      </div>
+      <div>
+        <label>
+            How many helpers to assign, people
             <input type="number" class="short-number" [disabled]="running" [(ngModel)]="simulationRules.helpersM">
         </label>
         <label>
@@ -80,20 +86,26 @@ import { FormsModule } from '@angular/forms';
       <div>
         <label>
             How many workstations to simulate?
-            <input type="number" class="short-number" [(ngModel)]="simulationRules.capacity" (ngModelChange)="createSimulation()" [disabled]="running">
+            <input type="number" class="short-number" min="4" max="26" [(ngModel)]="simulationRules.capacity" (ngModelChange)="createSimulation()" [disabled]="running">
         </label>
       </div>
 
       <div>
         <label>
             Processing time, minutes
-            <input type="number" class="short-number" [(ngModel)]="simulationRules.workTimeM" [disabled]="running">
+            <input type="number" class="short-number" min="0" [(ngModel)]="simulationRules.workTimeM" [disabled]="running">
         </label>
         <label>
             ±
-            <input type="number" class="short-number" [(ngModel)]="simulationRules.workTimeD" [disabled]="running">
+            <input type="number" class="short-number" min="0" [(ngModel)]="simulationRules.workTimeD" [disabled]="running">
         </label>
       </div>
+
+      <div>
+        <button (click)="setProcessingTime(5/6)">Normal</button>
+        <button (click)="setProcessingTime(1.2)">Hard</button>
+        <button (click)="setProcessingTime(2)">Insane</button>
+    </div>
     </div>
 
     <div>
@@ -134,7 +146,7 @@ import { FormsModule } from '@angular/forms';
         Slow
       </label>
     </div>
-    <button *ngIf="!running" (click)="runSimulation()">Start</button>
+    <button *ngIf="!running" (click)="runSimulation()"><strong>Start</strong></button>
     <button *ngIf="running" (click)="stopSimulation()">Stop</button>
 
     <div class="simulation-area" *ngIf="animate">
@@ -373,6 +385,11 @@ export class App {
       this.wsWidth = areaWidth / 2;
       this.boxWidth = this.deskWidth / 2;
     }
+  }
+
+  setProcessingTime(factor: number) {
+    this.simulationRules.workTimeM = Math.round((60 / this.simulationRules.ordersPerHour) * factor * 10) / 10;
+    this.simulationRules.workTimeD = Math.round(this.simulationRules.workTimeM * 0.6 * 10) / 10;
   }
 
 }

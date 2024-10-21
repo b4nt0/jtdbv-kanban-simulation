@@ -66,57 +66,64 @@ import { FormsModule } from '@angular/forms';
       </div>
     </div>
 
-    <ng-container  *ngIf="simulationRules.rules == 'kanban'">
-      <div class="section">Kanban</div>
-      <div>
-        <label>
-            WIP limit per station, orders
-            <input type="number" class="short-number" [disabled]="running" min="1" [(ngModel)]="simulationRules.wipLimit">
-        </label>
-      </div>
-      <div>
-        <label>
-            Employee's reaction time, minutes
-            <input type="number" class="short-number" [disabled]="running" min="0"  [(ngModel)]="kanbanReactionTime">
-        </label>
-      </div>
+    <ng-container *ngIf="!advancedParameters">
+      <div class="section clickable" (click)="advancedParameters=true">[+] More parameters</div>
     </ng-container>
 
-    <ng-container  *ngIf="simulationRules.rules == 'manager'">
-      <div class="section">Manager</div>
-      <div>
-        <label>
-            Overload sensitivity, orders
-            <input type="number" class="short-number" [disabled]="running" [(ngModel)]="simulationRules.wipLimit">
-        </label>
-      </div>
-      <div>
-        <label>
-            Manager's reaction time, minutes
-            <input type="number" class="short-number" [disabled]="running" min="0" [(ngModel)]="managerReactionTime"><br>
-        </label>
-      </div>
-      <div>
-        <label>
-            How many helpers to assign, people
-            <input type="number" class="short-number" [disabled]="running" [(ngModel)]="simulationRules.helpersM">
-        </label>
-        <label>
-            ±
-            <input type="number" class="short-number" [disabled]="running" [(ngModel)]="simulationRules.helpersD">
-        </label>
-      </div>
-    </ng-container>
+    <ng-container *ngIf="advancedParameters">
+      <div class="section clickable" (click)="advancedParameters=false">[-] Fewer parameters</div>
+      <ng-container  *ngIf="simulationRules.rules == 'kanban'">
+        <div class="section">Kanban</div>
+        <div>
+          <label>
+              WIP limit per station, orders
+              <input type="number" class="short-number" [disabled]="running" min="1" [(ngModel)]="simulationRules.wipLimit">
+          </label>
+        </div>
+        <div>
+          <label>
+              Employee's reaction time, minutes
+              <input type="number" class="short-number" [disabled]="running" min="0"  [(ngModel)]="kanbanReactionTime">
+          </label>
+        </div>
+      </ng-container>
 
-    <div>
-      <div class="section">Orders</div>
+      <ng-container  *ngIf="simulationRules.rules == 'manager'">
+        <div class="section">Manager</div>
+        <div>
+          <label>
+              Overload sensitivity, orders
+              <input type="number" class="short-number" [disabled]="running" [(ngModel)]="simulationRules.wipLimit">
+          </label>
+        </div>
+        <div>
+          <label>
+              Manager's reaction time, minutes
+              <input type="number" class="short-number" [disabled]="running" min="0" [(ngModel)]="managerReactionTime"><br>
+          </label>
+        </div>
+        <div>
+          <label>
+              How many helpers to assign, people
+              <input type="number" class="short-number" [disabled]="running" [(ngModel)]="simulationRules.helpersM">
+          </label>
+          <label>
+              ±
+              <input type="number" class="short-number" [disabled]="running" [(ngModel)]="simulationRules.helpersD">
+          </label>
+        </div>
+      </ng-container>
+
       <div>
-        <label>
-            Orders per hour
-            <input type="number" [(ngModel)]="simulationRules.ordersPerHour">
-        </label>
+        <div class="section">Orders</div>
+        <div>
+          <label>
+              Orders per hour
+              <input type="number" [(ngModel)]="simulationRules.ordersPerHour">
+          </label>
+        </div>
       </div>
-    </div>
+    </ng-container>  
 
     <div class="section">Simulation</div>
     <div>
@@ -251,6 +258,7 @@ export class App {
   public deskWidth: number = 0;
   public wsWidth: number = 0;
   public boxWidth: number = 0;
+  public advancedParameters: boolean = false;
 
   public flow?: Flow;
   public running: boolean = false;

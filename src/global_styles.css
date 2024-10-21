@@ -3,6 +3,10 @@ div.section {
   font-weight: 600;
 }
 
+.clickable {
+  cursor: pointer;
+}
+
 input.short-number {
   max-width: 4em;
 }

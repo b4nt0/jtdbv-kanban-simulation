@@ -1,0 +1,318 @@
+<head>
+  <script
+    defer
+    src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"
+  ></script>
+</head>
+
+<body>
+  <div x-data="state">
+    <h1>Sequential workflow simulation</h1>
+    <!-- Select rules of the simulation -->
+    <div>
+      <div class="section">Simulation rules</div>
+      <div>
+        <label>
+          <input
+            type="radio"
+            name="options"
+            x-model="rules.rules"
+            value="self"
+            :disabled="running"
+          />
+          Passive
+        </label>
+
+        <label>
+          <input
+            type="radio"
+            name="options"
+            x-model="rules.rules"
+            value="manager"
+            :disabled="running"
+          />
+          Manager decides
+        </label>
+
+        <label>
+          <input
+            type="radio"
+            name="options"
+            x-model="rules.rules"
+            value="kanban"
+            :disabled="running"
+          />
+          Kanban
+        </label>
+      </div>
+    </div>
+
+    <div>
+      <div class="section">Workstations</div>
+      <div>
+        <label>
+          How many workstations to simulate?
+          <input
+            type="number"
+            class="short-number"
+            min="4"
+            max="26"
+            x-model="rules.capacity"
+            :disabled="running"
+          />
+        </label>
+      </div>
+
+      <div>
+        <label>
+          Processing time, minutes
+          <input
+            type="number"
+            class="short-number"
+            min="0"
+            x-model="rules.workTimeM"
+            :disabled="running"
+          />
+        </label>
+        <label>
+          ±
+          <input
+            type="number"
+            class="short-number"
+            min="0"
+            x-model="rules.workTimeD"
+            :disabled="running"
+          />
+        </label>
+      </div>
+
+      <div>
+        <button @click="setProcessingTime(5/6)">Normal</button>
+        <button @click="setProcessingTime(1.01)">Hard</button>
+        <button @click="setProcessingTime(1.2)">Insane</button>
+      </div>
+    </div>
+
+    <template x-if="!advancedParameters">
+      <div class="section clickable" @click="advancedParameters=true">
+        [+] More parameters
+      </div>
+    </template>
+
+    <template x-if="advancedParameters">
+      <div>
+        <div class="section clickable" @click="advancedParameters=false">
+          [-] Fewer parameters
+        </div>
+        <template x-if="rules.rules == 'kanban'">
+          <div>
+            <div class="section">Kanban</div>
+            <div>
+              <label>
+                WIP limit per station, orders
+                <input
+                  type="number"
+                  class="short-number"
+                  :disabled="running"
+                  min="1"
+                  x-model="rules.wipLimit"
+                />
+              </label>
+            </div>
+            <div>
+              <label>
+                Employee's reaction time, minutes
+                <input
+                  type="number"
+                  class="short-number"
+                  :disabled="running"
+                  min="0"
+                  x-model="kanbanReactionTime"
+                />
+              </label>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="rules.rules == 'manager'">
+          <div>
+            <div class="section">Manager</div>
+            <div>
+              <label>
+                Overload sensitivity, orders
+                <input
+                  type="number"
+                  class="short-number"
+                  :disabled="running"
+                  x-model="rules.wipLimit"
+                />
+              </label>
+            </div>
+            <div>
+              <label>
+                Manager's reaction time, minutes
+                <input
+                  type="number"
+                  class="short-number"
+                  :disabled="running"
+                  min="0"
+                  x-model="managerReactionTime"
+                /><br />
+              </label>
+            </div>
+            <div>
+              <label>
+                How many helpers to assign, people
+                <input
+                  type="number"
+                  class="short-number"
+                  :disabled="running"
+                  x-model="rules.helpersM"
+                />
+              </label>
+              <label>
+                ±
+                <input
+                  type="number"
+                  class="short-number"
+                  :disabled="running"
+                  x-model="rules.helpersD"
+                />
+              </label>
+            </div>
+          </div>
+        </template>
+
+        <div>
+          <div class="section">Orders</div>
+          <div>
+            <label>
+              Orders per hour
+              <input
+                type="number"
+                :disabled="running"
+                x-model="rules.ordersPerHour"
+              />
+            </label>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <div class="section">Simulation</div>
+    <div>
+      <label>
+        Animate
+        <input
+          type="checkbox"
+          x-model="animate"
+          :disabled="running && !paused"
+        />
+      </label>
+    </div>
+
+    <template x-if="animate">
+      <div>
+        <label>
+          <input
+            type="radio"
+            name="speed"
+            x-model="animateSpeed"
+            value="5"
+            :disabled="running && !paused"
+          />
+          Ultra-fast
+        </label>
+
+        <label>
+          <input
+            type="radio"
+            name="speed"
+            x-model="animateSpeed"
+            value="20"
+            :disabled="running && !paused"
+          />
+          Fast
+        </label>
+
+        <label>
+          <input
+            type="radio"
+            name="speed"
+            x-model="animateSpeed"
+            value="50"
+            :disabled="running && !paused"
+          />
+          Normal
+        </label>
+
+        <label>
+          <input
+            type="radio"
+            name="speed"
+            x-model="animateSpeed"
+            value="100"
+            :disabled="running && !paused"
+          />
+          Slow
+        </label>
+      </div>
+    </template>
+
+    <template x-if="!running">
+      <button @click="runSimulation()">
+        <strong>Start</strong>
+      </button>
+    </template>
+    <template x-if="running">
+      <div>
+        <button @click="stopSimulation()">Stop</button>
+        <template x-if="!paused">
+          <button @click="pauseSimulation()">Pause</button>
+        </template>
+        <template x-if="paused">
+          <button @click="resumeSimulation()">Resume</button>
+        </template>
+      </div>
+    </template>
+
+    <template x-if="animate">
+      <div class="animation-area" id="animation-area">
+        <template x-for="(ws, index) in workstations">
+          <div class="animation-ws-area">
+            <div class="desktops">
+              <div class="desk">
+                <div :id="`desk${ws.name}`" style="height: 1px"></div>
+                <div class="desktop" style="height: 8px"></div>
+              </div>
+              <div class="desk" @click="toggleSlow(ws)">
+                <div :id="`workstation${ws.name}`"></div>
+                <div
+                  class="desktop"
+                  :class="{ 'slow-ws': slow[index] }"
+                  style="height: 24px"
+                >
+                  <span x-text="slow[index]? 'slow': ''"></span>
+                </div>
+              </div>
+            </div>
+            <div class="desk-name"><span x-text="ws.name"></span></div>
+            <div class="desk-people">
+              <span x-text="workers.length > index? workers[index]: 0"></span>
+              <span x-text="workers[index] == 1? 'person': 'people'"></span>
+            </div>
+          </div>
+        </template>
+      </div>
+    </template>
+
+    <div class="simulation-statistics" id="simulation-statistics">
+      <div class="section">Simulation statistics</div>
+      <div>Simulation time: <span x-text="simulationTime"></span></div>
+      <div>Orders completed: <span x-text="orders"></span></div>
+      <div>Average time: <span x-text="timeThroughSystem"></span></div>
+      <div>Currently in system: <span x-text="leftInSystem"></span></div>
+      <div #output id="output"></div>
+    </div>
+  </div>
+</body>

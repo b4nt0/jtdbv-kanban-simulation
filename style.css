@@ -1,0 +1,73 @@
+div.section {
+  margin-top: 1.2em;
+  font-weight: 600;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+input.short-number {
+  max-width: 4em;
+}
+
+div.animation-area {
+  margin-top: 2em;
+  border: 1px solid black;
+  width: 100%;
+  height: 150px;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+}
+
+div.animation-ws-area {
+  flex-grow: 1;
+  align-self: flex-end;
+  display: flex;
+  flex-direction: column;
+}
+
+div.desktops {
+  display: flex;
+  flex-direction: row;
+}
+
+div.desk-name {
+  align-self: center;
+}
+
+div.desk-people {
+  align-self: center;
+  font-size: small;
+}
+
+div.desk {
+  display: flex;
+  flex-grow: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+div.desktop {
+  width: 100%;
+  background-color: blue;
+  color: white;
+}
+
+div.desktop span {
+  width: 100%;
+  text-align: center;
+  display: block;
+  font-size: small;
+  font-family: monospace;
+}
+
+div.slow-ws {
+  background-color: darkred !important;
+}
+
+.ss-entity {
+  position: absolute;
+}

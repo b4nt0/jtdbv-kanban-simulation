@@ -196,6 +196,20 @@
             </label>
           </div>
         </div>
+
+        <div>
+          <div class="section">Simulation</div>
+          <div>
+            <label>
+              Total simulation time (days)
+              <input
+                type="number"
+                :disabled="running"
+                x-model="rules.totalSimulationTimeDays"
+              />
+            </label>
+          </div>
+        </div>
       </div>
     </template>
 
